@@ -1,6 +1,12 @@
 import cors from 'cors';
 import express, { Router } from 'express';
 import { connectToDB ,db} from "./db.js";
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import bodyParser from 'body-parser';
+// const bcrypt = require('bcryptjs');
+// const jwt = require('jsonwebtoken');
+// const bodyParser = require('body-parser');
 
 const app = express()
 app.use(cors())
@@ -39,22 +45,23 @@ app.post('/signup', async(req, res) => {
 
 //forgotpass
 
-app.post('/forgotpassword', async (req, res) => {
+app.post('/resetpassword', async (req, res) => {
     const { email, newPassword, confirmPassword } = req.body;
 
+    if (newPassword !== confirmPassword) {
+        return res.status(400).json({ error: "Passwords do not match" });
+    }
+
     try {
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({ error: "Passwords do not match" });
-        }
         const result = await db.collection("login").updateOne(
-            { Email: req.body.email },
+            { Email: email },
             { $set: { Password: newPassword } }
         );
 
         if (result.matchedCount > 0) {
-            res.json({ message: "Password reset successful", values: result });
+            res.json({ message: "Password reset successful" });
         } else {
-            res.json({ error: "No user found with this email address" });
+            res.status(404).json({ error: "No user found with this email address" });
         }
     } catch (error) {
         console.error("Error updating password:", error);
@@ -62,94 +69,114 @@ app.post('/forgotpassword', async (req, res) => {
     }
 });
 
+//addmeal
+
+app.post('/meals', async (req, res) => {
+    await db.collection("meals").insertOne({
+      breakfast: req.body.breakfast,
+      lunch: req.body.lunch,
+      dinner: req.body.dinner,
+    })
+    .then((result) => {
+      if (result) {
+        res.json({ message: "Meal data saved successfully", values: result });
+      } else {
+        res.json({ error: "Failed to save meal data" });
+      }
+    })
+    .catch((error) => {
+      res.status(500).json({ error: "Failed to save meal data", details: error });
+    });
+  });
+  
+//profile
 
 
 
 
+app.use(cors());
+app.use(bodyParser.json());
 
+const users = [
+  {
+    Gmail: 'user@example.com',
+    Password: bcrypt.hashSync('password123', 8),
+    Phone: '1234567890',
+    Registerno: 'REG1234',
+  },
+];
 
+const JWT_SECRET = 'your_jwt_secret_key';
 
+// Login route
+app.post('/login', (req, res) => {
+  const { Gmail, Password } = req.body;
 
-// const express = require('express');
-// const bodyParser = require('body-parser');
-// app.use(bodyParser.json());
+  const user = users.find((u) => u.Gmail === Gmail);
 
-// const PORT = process.env.PORT || 5000;
+  if (!user) {
+    return res.status(400).json({ message: 'User not found' });
+  }
 
-// // Basal Metabolic Rate (BMR) Calculation
-// const calculateBMR = (weight, height, age, gender) => {
-//   if (gender === 'male') {
-//     return 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age);
-//   } else {
-//     return 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age);
+  const isPasswordValid = bcrypt.compareSync(Password, user.Password);
+
+  if (!isPasswordValid) {
+    return res.status(400).json({ message: 'Invalid Password' });
+  }
+
+  const token = jwt.sign({ id: user.Gmail }, JWT_SECRET, {
+    expiresIn: '1h',
+  });
+
+  res.json({
+    auth: {
+      Gmail: user.Gmail,
+      Phone: user.Phone,
+      Registerno: user.Registerno,
+      token,
+    },
+  });
+ });
+
+// // Middleware to verify token
+// const verifyToken = (req, res, next) => {
+//   const token = req.headers['authorization'];
+
+//   if (!token) {
+//     return res.status(403).send({ message: 'No token provided.' });
 //   }
+
+//   jwt.verify(token, JWT_SECRET, (err, decoded) => {
+//     if (err) {
+//       return res.status(500).send({ message: 'Failed to authenticate token.' });
+//     }
+
+//     req.userId = decoded.id;
+//     next();
+//   });
 // };
 
-// // Total Daily Energy Expenditure (TDEE) Calculation
-// const calculateTDEE = (bmr, activityLevel) => {
-//   const activityMultipliers = {
-//     sedentary: 1.2,
-//     light: 1.375,
-//     moderate: 1.55,
-//     active: 1.725,
-//     very_active: 1.9,
-//   };
-//   return bmr * activityMultipliers[activityLevel];
-// };
+// // Profile route (protected)
+// app.get('/profile', verifyToken, (req, res) => {
+//   const user = users.find((u) => u.Gmail === req.userId);
 
-// // Macronutrient Ratios Calculation
-// const calculateMacros = (calories, goal) => {
-//   let proteinPercentage, fatPercentage, carbsPercentage;
-
-//   if (goal === 'maintain') {
-//     proteinPercentage = 0.3;
-//     fatPercentage = 0.3;
-//     carbsPercentage = 0.4;
-//   } else if (goal === 'lose') {
-//     proteinPercentage = 0.4;
-//     fatPercentage = 0.35;
-//     carbsPercentage = 0.25;
-//   } else if (goal === 'gain') {
-//     proteinPercentage = 0.25;
-//     fatPercentage = 0.3;
-//     carbsPercentage = 0.45;
+//   if (!user) {
+//     return res.status(404).json({ message: 'User not found' });
 //   }
-
-//   const protein = (calories * proteinPercentage) / 4;
-//   const fat = (calories * fatPercentage) / 9;
-//   const carbs = (calories * carbsPercentage) / 4;
-
-//   return {
-//     protein: Math.round(protein),
-//     fat: Math.round(fat),
-//     carbs: Math.round(carbs),
-//   };
-// };
-
-// // Hydration Needs Calculation
-// const calculateHydration = (weight) => {
-//   return (weight * 0.033).toFixed(2); // Liters per day
-// };
-
-// // Endpoint to handle calculation requests
-// app.post('/calculate', (req, res) => {
-//   const { weight, height, age, gender, activityLevel, goal } = req.body;
-
-//   const bmr = calculateBMR(weight, height, age, gender);
-//   const tdee = calculateTDEE(bmr, activityLevel);
-//   const macros = calculateMacros(tdee, goal);
-//   const hydration = calculateHydration(weight);
 
 //   res.json({
-//     calories: Math.round(tdee),
-//     macros: macros,
-//     hydration: hydration,
+//     Gmail: user.Gmail,
+//     Phone: user.Phone,
+//     Registerno: user.Registerno,
 //   });
 // });
 
-// app.listen(PORT, () => {
-//   console.log(`Server is running on port ${PORT}`);
+// // Sign-out route
+// app.post('/logout', (req, res) => {
+//   // Here, you would typically invalidate the token or clear the session
+//   res.json({ message: 'Logged out successfully' });
 // });
+
 
 
 connectToDB(() => {
